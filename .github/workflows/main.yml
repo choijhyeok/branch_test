@@ -8,8 +8,8 @@ jobs:
   create-branch:
     runs-on: ubuntu-latest
     permissions:
-      contents: write   # 브랜치 만들기/푸시
-      issues: write     # 이슈에 브랜치 링크
+      contents: write
+      issues: write
 
     steps:
       - name: Set branch name from issue
@@ -18,13 +18,21 @@ jobs:
           ISSUE_NUMBER=${{ github.event.issue.number }}
           ISSUE_TITLE="${{ github.event.issue.title }}"
 
-          # 제목을 slug 형태로 변환 (원하시는 규칙대로 수정 가능)
+          # issue title → slug 생성
+          # 예: "Test Make" -> "test-make"
+          #     "gtm 배포 준비" -> "gtm-배포-준비"
           SAFE_TITLE=$(echo "$ISSUE_TITLE" \
             | tr '[:upper:]' '[:lower:]' \
-            | sed -E 's/[^a-zA-Z0-9가-힣]+/-/g' \
+            | sed -E 's/[^0-9a-zA-Z가-힣]+/-/g' \
             | sed -E 's/^-+|-+$//g')
 
+          # 3자리 번호 + 제목 slug
+          # 예: #7 "TestMake" -> 007-testmake
           BRANCH_NAME=$(printf "%03d-%s" "$ISSUE_NUMBER" "$SAFE_TITLE")
+
+          echo "ISSUE_TITLE: $ISSUE_TITLE"
+          echo "SAFE_TITLE: $SAFE_TITLE"
+          echo "BRANCH_NAME: $BRANCH_NAME"
 
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
@@ -35,9 +43,7 @@ jobs:
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
 
-          echo "Creating branch '$BRANCH_NAME' for issue #$ISSUE_NUMBER in $REPO"
-
-          # 기본 브랜치(main 등) 기준으로 생성하고 Development에 링크
+          # 기본 브랜치에서 브랜치 생성 + Development에 링크
           gh issue develop "$ISSUE_NUMBER" \
             --name "$BRANCH_NAME" \
             --base "${{ github.event.repository.default_branch }}" \
