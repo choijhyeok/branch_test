@@ -2,10 +2,10 @@ name: Create branches from issue
 
 on:
   issues:
-    types: [opened]   # 이슈 새로 생성될 때만 동작
+    types: [opened]
 
 permissions:
-  contents: write     # 브랜치 push 위해 필요
+  contents: write
   issues: read
 
 jobs:
@@ -16,7 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 전체 히스토리 필요 (브랜치 만들 때)
+          fetch-depth: 0
 
       - name: Set up git identity
         run: |
@@ -26,17 +26,24 @@ jobs:
       - name: Create branches from issue title
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
-          BASE_BRANCH: dev   # 기본 브랜치명 (main / master 등 맞게 수정)
+          BASE_BRANCH: dev   # 현재 default branch
         run: |
           echo "Issue title: $ISSUE_TITLE"
 
           # 기준 브랜치 체크아웃
           git checkout "$BASE_BRANCH"
 
-          # 이슈 제목을 슬러그 형태로 변환 (소문자, 공백 -> -, 특수문자 제거)
-          SLUG=$(echo "$ISSUE_TITLE" \
+          # 앞에 [Feature] 같은 태그 제거
+          CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/^\[[^]]*\][[:space:]]*//')
+          echo "Clean title: $CLEAN_TITLE"
+
+          # 이슈 제목을 슬러그 형태로 변환
+          # - 소문자
+          # - 영문/숫자/공백만 남기고 나머지는 제거
+          #   (지금은 한글 안 쓰시니 일단 안전하게 영문/숫자만 허용)
+          SLUG=$(echo "$CLEAN_TITLE" \
             | tr '[:upper:]' '[:lower:]' \
-            | sed 's/[^a-z0-9가-힣 ]//g' \
+            | sed 's/[^a-z0-9 ]//g' \
             | tr ' ' '-' \
             | sed 's/-\+/-/g' \
             | sed 's/^-//' \
@@ -44,9 +51,15 @@ jobs:
 
           echo "Slug: $SLUG"
 
+          if [ -z "$SLUG" ]; then
+            echo "Slug is empty. Aborting to avoid creating weird branches."
+            exit 1
+          fi
+
           # 000 ~ 020까지 브랜치 생성 및 push
+          # seq -w 0 20 이 이미 000,001,... 형식이므로 printf 안 쓰고 그대로 사용
           for i in $(seq -w 0 20); do
-            BRANCH_NAME=$(printf "%03d-%s-issue" "$i" "$SLUG")
+            BRANCH_NAME="${i}-${SLUG}-issue"
             echo "Creating branch: $BRANCH_NAME"
 
             # 이미 존재하면 스킵
