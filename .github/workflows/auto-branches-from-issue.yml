@@ -41,13 +41,13 @@ jobs:
           CLEAN_TITLE=$(echo "$CLEAN_TITLE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
 
           # 슬러그 생성
-          # - 영문만 소문자로
+          # - 영문은 소문자로
+          # - 모든 문장부호(ASCII punct) 제거 (한글/영문/숫자/공백은 보존)
           # - 공백 -> -
-          # - ASCII 특수문자 몇 개만 제거 (한글/기타 문자는 그대로 둠)
           SLUG=$(echo "$CLEAN_TITLE" \
             | tr '[:upper:]' '[:lower:]' \
+            | sed 's/[[:punct:]]//g' \
             | tr ' ' '-' \
-            | tr -d '[](){}!@#$%^&*+=?|\\/:;'",<.>' \
           )
 
           # 연속된 - 정리 + 앞뒤 - 제거
