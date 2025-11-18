@@ -23,7 +23,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Create branches from issue title
+      - name: Create branch from issue title
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
           BASE_BRANCH: dev   # 현재 default branch
@@ -37,17 +37,25 @@ jobs:
           CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/^\[[^]]*\][[:space:]]*//')
           echo "Clean title: $CLEAN_TITLE"
 
-          # 이슈 제목을 슬러그 형태로 변환
-          # - 소문자
-          # - 영문/숫자/공백만 남기고 나머지는 제거
-          #   (지금은 한글 안 쓰시니 일단 안전하게 영문/숫자만 허용)
+          # 앞뒤 공백 정리
+          CLEAN_TITLE=$(echo "$CLEAN_TITLE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          # 슬러그 생성
+          # - 영문만 소문자로
+          # - 공백 -> -
+          # - ASCII 특수문자 몇 개만 제거 (한글/기타 문자는 그대로 둠)
           SLUG=$(echo "$CLEAN_TITLE" \
             | tr '[:upper:]' '[:lower:]' \
-            | sed 's/[^a-z0-9 ]//g' \
             | tr ' ' '-' \
+            | tr -d '[](){}!@#$%^&*+=?|\\/:;'",<.>' \
+          )
+
+          # 연속된 - 정리 + 앞뒤 - 제거
+          SLUG=$(echo "$SLUG" \
             | sed 's/-\+/-/g' \
             | sed 's/^-//' \
-            | sed 's/-$//')
+            | sed 's/-$//' \
+          )
 
           echo "Slug: $SLUG"
 
@@ -56,18 +64,25 @@ jobs:
             exit 1
           fi
 
-          # 000 ~ 020까지 브랜치 생성 및 push
-          # seq -w 0 20 이 이미 000,001,... 형식이므로 printf 안 쓰고 그대로 사용
+          # 000 ~ 020 중 아직 없는 번호 하나만 골라서 브랜치 1개만 생성
+          CREATED="false"
           for i in $(seq -w 0 20); do
             BRANCH_NAME="${i}-${SLUG}-issue"
-            echo "Creating branch: $BRANCH_NAME"
 
-            # 이미 존재하면 스킵
+            # 이미 존재하면 다음 번호로
             if git ls-remote --heads origin "$BRANCH_NAME" | grep "$BRANCH_NAME" > /dev/null; then
               echo "Branch $BRANCH_NAME already exists. Skipping."
               continue
             fi
 
+            echo "Creating branch: $BRANCH_NAME"
             git branch "$BRANCH_NAME" "$BASE_BRANCH"
             git push origin "$BRANCH_NAME"
+            CREATED="true"
+            break
           done
+
+          if [ "$CREATED" != "true" ]; then
+            echo "No available index between 000 and 020. No branch created."
+            exit 1
+          fi
