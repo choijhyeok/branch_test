@@ -24,14 +24,14 @@ jobs:
           # 2) 소문자로 변환 (한글은 그대로)
           LOWER_TITLE=$(echo "$ISSUE_TITLE_TRIMMED" | tr '[:upper:]' '[:lower:]')
 
-          # 3) 공백류 → '-' 로
-          #    영문/숫자/한글/하이픈만 남기고 나머지는 '-'로 치환
+          # 3) 공백류 → '-' 로, 슬래시는 '-'로 치환
+          #    (나머지 문자는 웬만하면 그대로 둔다)
           SAFE_TITLE=$(echo "$LOWER_TITLE" \
             | sed -E 's/[[:space:]]+/-/g' \
-            | sed -E 's/[^0-9a-zA-Z가-힣-]+/-/g' \
+            | sed -E 's,/,-,g' \
             | sed -E 's/^-+|-+$//g')
 
-          # 4) 제목이 전부 특수문자/이모지라서 날아가면 fallback
+          # 4) 정말로 아무 글자도 안 남았을 때만 fallback
           if [ -z "$SAFE_TITLE" ]; then
             SAFE_TITLE="issue"
           fi
