@@ -14,46 +14,47 @@ jobs:
     steps:
       - name: Set branch name from issue
         id: vars
+        # 중요: 제목에 따옴표나 특수문자가 있어도 깨지지 않도록 env로 주입합니다.
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
         run: |
-          ISSUE_NUMBER=${{ github.event.issue.number }}
-          ISSUE_TITLE="${{ github.event.issue.title }}"
+          echo "Original Title: $ISSUE_TITLE"
 
-          # 1) 앞뒤 공백 제거
-          ISSUE_TITLE_TRIMMED=$(echo "$ISSUE_TITLE" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+          # 1) 소문자로 변환 (한글은 그대로 유지됨)
+          LOWER_TITLE=$(echo "$ISSUE_TITLE" | tr '[:upper:]' '[:lower:]')
 
-          # 2) 소문자로 변환 (한글은 그대로)
-          LOWER_TITLE=$(echo "$ISSUE_TITLE_TRIMMED" | tr '[:upper:]' '[:lower:]')
-
-          # 3) 공백류 → '-' 로, 슬래시는 '-'로 치환
-          #    (나머지 문자는 웬만하면 그대로 둔다)
+          # 2) 공백과 슬래시(/)를 하이픈(-)으로 변경
+          # 3) [중요] 한글(가-힣), 영문(a-z), 숫자(0-9), 하이픈(-)을 제외한 모든 특수문자 제거
+          #    (예: 대괄호[], 특수기호 등은 제거됨)
           SAFE_TITLE=$(echo "$LOWER_TITLE" \
             | sed -E 's/[[:space:]]+/-/g' \
-            | sed -E 's,/,-,g' \
-            | sed -E 's/^-+|-+$//g')
+            | sed -E 's,/,--,g' \
+            | sed -E 's/[^a-z0-9가-힣-]//g')
 
-          # 4) 정말로 아무 글자도 안 남았을 때만 fallback
+          # 4) 연속된 하이픈을 하나로 줄임 (--- -> -) 및 앞뒤 하이픈 제거
+          SAFE_TITLE=$(echo "$SAFE_TITLE" | sed -E 's/-+/-/g' | sed -E 's/^-+|-+$//g')
+
+          # 5) 만약 제목이 전부 특수문자라 다 지워졌다면 기본값 설정
           if [ -z "$SAFE_TITLE" ]; then
             SAFE_TITLE="issue"
           fi
 
-          # 최종 브랜치 이름: 3자리 번호-제목
+          # 최종 브랜치 이름: 000-제목
           BRANCH_NAME=$(printf "%03d-%s" "$ISSUE_NUMBER" "$SAFE_TITLE")
 
-          echo "ISSUE_TITLE: $ISSUE_TITLE"
-          echo "SAFE_TITLE: $SAFE_TITLE"
-          echo "BRANCH_NAME: $BRANCH_NAME"
-
+          echo "Final Branch Name: $BRANCH_NAME"
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
       - name: Create linked branch via GitHub CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
-
-          # 기본 브랜치에서 브랜치 생성 + Development에 링크
+          
+          # Issue 번호와 생성한 브랜치 이름으로 개발 브랜치 생성
           gh issue develop "$ISSUE_NUMBER" \
             --name "$BRANCH_NAME" \
             --base "${{ github.event.repository.default_branch }}" \
-            --repo "$REPO"
+            --repo "$REPO" \
+            --checkout=false
