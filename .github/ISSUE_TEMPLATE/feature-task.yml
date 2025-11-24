@@ -10,11 +10,9 @@ body:
       label: 상세 요구사항 및 개발 내용
       description: 왜 이 작업이 필요한지, 배경과 목적을 적어주세요.
       placeholder: |
-        - 기존 문제점
-        - 개선하려는 부분
         - 개발 내용
-          - [ ] 항목 1
-          - [ ] 항목 2
+          - [ ] ~~~ 개발완료
+          - [ ] !!!! 테스트 완료
           - [ ] 항목 3
     validations:
       required: true
