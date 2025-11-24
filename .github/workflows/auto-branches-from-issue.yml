@@ -69,24 +69,26 @@ jobs:
               # 브랜치 이름의 접두사 패턴 설정
               PREFIX_PATTERN="$TARGET_PREFIX"
               
+              CURRENT_INDEX=""
+              
               # 패턴 1: feature/SLUG-XX-issue (순번이 붙은 경우)
               if echo "$BRANCH" | grep -E -q "^${PREFIX_PATTERN}-[0-9]{2}-issue$"; then
-                  # 💡 수정된 부분: sed 구분자를 #으로 변경하여 충돌 방지
-                  # 추출: feature/SLUG-XX-issue -> XX
+                  # sed 구분자를 #으로 변경하여 충돌 방지. XX만 추출합니다.
                   CURRENT_INDEX=$(echo "$BRANCH" | sed "s#^${PREFIX_PATTERN}-\([0-9]\{2\}\)-issue$#\1#")
               
               # 패턴 2: feature/SLUG-issue (순번이 없는 첫 번째 브랜치)
               elif echo "$BRANCH" | grep -E -q "^${PREFIX_PATTERN}-issue$"; then
                   CURRENT_INDEX="00"
-              else
-                  continue
               fi
 
-              # 인덱스를 정수로 변환하여 비교합니다.
-              NUM_INDEX=$(printf "%d" "$CURRENT_INDEX")
-              
-              if [ "$NUM_INDEX" -gt "$MAX_INDEX" ]; then
-                  MAX_INDEX="$NUM_INDEX"
+              # CURRENT_INDEX가 추출되었을 경우에만 MAX_INDEX와 비교
+              if [ -n "$CURRENT_INDEX" ]; then
+                # 인덱스를 정수로 변환하여 비교합니다.
+                NUM_INDEX=$(printf "%d" "$CURRENT_INDEX")
+                
+                if [ "$NUM_INDEX" -gt "$MAX_INDEX" ]; then
+                    MAX_INDEX="$NUM_INDEX"
+                fi
               fi
           done
 
@@ -97,6 +99,7 @@ jobs:
           # 저장소에 이미 해당 브랜치명이 존재하는지 확인 (순번이 없는 기본 이름)
           if git ls-remote --heads origin "$DEFAULT_BRANCH_NAME" | grep "$DEFAULT_BRANCH_NAME" > /dev/null; then
               # 브랜치가 이미 존재하면, MAX_INDEX를 기준으로 다음 순번을 사용합니다.
+              # MAX_INDEX가 -1이면 00, 00이면 01, 01이면 02...
               NEXT_INDEX=$((MAX_INDEX + 1))
               
               if [ "$NEXT_INDEX" -gt 20 ]; then
