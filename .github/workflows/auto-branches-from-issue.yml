@@ -5,8 +5,9 @@ on:
     types: [opened]
 
 permissions:
+  # issues: write 권한이 필요합니다.
   contents: write
-  issues: read
+  issues: write # <--- 권한 수정 필요
 
 jobs:
   create_branches:
@@ -14,71 +15,75 @@ jobs:
 
     steps:
       - name: Checkout repository
+        # gh issue develop은 브랜치를 생성하기 때문에 git checkout은 반드시 필요하지 않지만,
+        # 브랜치 존재 유무 확인(git ls-remote)을 위해서는 Checkout이 있는 것이 좋습니다.
+        # 그러나 gh issue develop은 브랜치 생성과 연결을 한번에 처리하므로,
+        # 브랜치 존재 유무를 gh 명령어로 확인하는 게 더 효율적입니다.
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          ref: dev # BASE_BRANCH로 체크아웃
 
-      - name: Set up git identity
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Create branch from issue title
+      - name: Create branch from issue title and link
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
-          BASE_BRANCH: dev   # 현재 default branch
+          ISSUE_NUMBER: ${{ github.event.issue.number }} # <--- 이슈 번호 추가
+          BASE_BRANCH: dev
+          GH_TOKEN: ${{ github.token }} # <--- GH_TOKEN 추가
         run: |
+          set -euo pipefail # 스크립트 오류 시 즉시 종료
+
           echo "Issue title: $ISSUE_TITLE"
+          echo "Issue number: $ISSUE_NUMBER"
 
-          # 기준 브랜치 체크아웃
-          git checkout "$BASE_BRANCH"
-
-          # 앞에 [Feature] 같은 태그 제거
+          # 1. 태그 제거 및 슬러그 생성 (기존 로직 유지)
           CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/^\[[^]]*\][[:space:]]*//')
-          echo "Clean title: $CLEAN_TITLE"
-
-          # 앞뒤 공백 정리
           CLEAN_TITLE=$(echo "$CLEAN_TITLE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-
-          # 슬러그 생성
-          # - 영문은 소문자로
-          # - 모든 문장부호(ASCII punct) 제거 (한글/영문/숫자/공백은 보존)
-          # - 공백 -> -
           SLUG=$(echo "$CLEAN_TITLE" \
             | tr '[:upper:]' '[:lower:]' \
             | sed 's/[[:punct:]]//g' \
             | tr ' ' '-' \
           )
-
-          # 연속된 - 정리 + 앞뒤 - 제거
           SLUG=$(echo "$SLUG" \
             | sed 's/-\+/-/g' \
             | sed 's/^-//' \
             | sed 's/-$//' \
           )
-
-          echo "Slug: $SLUG"
-
+          
           if [ -z "$SLUG" ]; then
-            echo "Slug is empty. Aborting to avoid creating weird branches."
+            echo "Slug is empty. Aborting."
             exit 1
           fi
 
-          # 000 ~ 020 중 아직 없는 번호 하나만 골라서 브랜치 1개만 생성
+          # 2. 브랜치 이름 결정 (기존 로직 유지)
           CREATED="false"
-          for i in $(seq -w 0 20); do
-            BRANCH_NAME="${i}-${SLUG}-issue"
+          REPO="${{ github.repository }}"
 
-            # 이미 존재하면 다음 번호로
-            if git ls-remote --heads origin "$BRANCH_NAME" | grep "$BRANCH_NAME" > /dev/null; then
-              echo "Branch $BRANCH_NAME already exists. Skipping."
+          # 기존 로직처럼 000-020 중 없는 번호 선택
+          for i in $(seq -w 0 20); do
+            # 기존에는 ISSUE_NUMBER가 없었지만, gh issue develop을 쓰려면 브랜치 이름에 이슈 번호가 있는 것이 권장됨
+            # 기존 auto-branch-on-issue.yml 처럼 issue/NUM-SLUG 패턴을 따르거나, 
+            # 아니면 기존처럼 ${i}-${SLUG}-issue 로 가도 무방하나, 연결은 gh가 담당
+            BRANCH_NAME="${i}-${SLUG}-issue" 
+            
+            # gh issue develop을 사용하면 브랜치 존재 유무를 git ls-remote 대신 gh로 확인
+            if gh issue develop --list --repo "$REPO" "$ISSUE_NUMBER" | grep -q "$BRANCH_NAME"; then
+              echo "Branch $BRANCH_NAME already linked or exists. Skipping index."
               continue
             fi
 
-            echo "Creating branch: $BRANCH_NAME"
-            git branch "$BRANCH_NAME" "$BASE_BRANCH"
-            git push origin "$BRANCH_NAME"
+            # 브랜치 생성 및 이슈 연결 (GH CLI 사용)
+            # gh issue develop은 자동으로 브랜치가 없으면 BASE_BRANCH를 기준으로 생성하고 연결까지 해줍니다.
+            echo "Creating & linking branch: $BRANCH_NAME"
+            gh issue develop "$ISSUE_NUMBER" \
+              --repo "$REPO" \
+              --branch-repo "$REPO" \
+              --base "$BASE_BRANCH" \
+              --name "$BRANCH_NAME"
+            
             CREATED="true"
+            echo "Linked branches now:"
+            gh issue develop --list --repo "$REPO" "$ISSUE_NUMBER"
             break
           done
 
