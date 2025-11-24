@@ -5,9 +5,8 @@ on:
     types: [opened]
 
 permissions:
-  # issues: write 권한이 필요합니다.
   contents: write
-  issues: write # <--- 권한 수정 필요
+  issues: write
 
 jobs:
   create_branches:
@@ -15,28 +14,25 @@ jobs:
 
     steps:
       - name: Checkout repository
-        # gh issue develop은 브랜치를 생성하기 때문에 git checkout은 반드시 필요하지 않지만,
-        # 브랜치 존재 유무 확인(git ls-remote)을 위해서는 Checkout이 있는 것이 좋습니다.
-        # 그러나 gh issue develop은 브랜치 생성과 연결을 한번에 처리하므로,
-        # 브랜치 존재 유무를 gh 명령어로 확인하는 게 더 효율적입니다.
+        # Checkout은 git ls-remote가 동작하는 데 필수는 아니지만, 워크플로우의 안정성을 위해 유지합니다.
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: dev # BASE_BRANCH로 체크아웃
+          ref: dev
 
       - name: Create branch from issue title and link
         env:
           ISSUE_TITLE: ${{ github.event.issue.title }}
-          ISSUE_NUMBER: ${{ github.event.issue.number }} # <--- 이슈 번호 추가
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
           BASE_BRANCH: dev
-          GH_TOKEN: ${{ github.token }} # <--- GH_TOKEN 추가
+          GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail # 스크립트 오류 시 즉시 종료
+          set -euo pipefail
 
           echo "Issue title: $ISSUE_TITLE"
           echo "Issue number: $ISSUE_NUMBER"
 
-          # 1. 태그 제거 및 슬러그 생성 (기존 로직 유지)
+          # 1. 태그 제거 및 슬러그 생성 (로직 동일)
           CLEAN_TITLE=$(echo "$ISSUE_TITLE" | sed 's/^\[[^]]*\][[:space:]]*//')
           CLEAN_TITLE=$(echo "$CLEAN_TITLE" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
           SLUG=$(echo "$CLEAN_TITLE" \
@@ -55,25 +51,23 @@ jobs:
             exit 1
           fi
 
-          # 2. 브랜치 이름 결정 (기존 로직 유지)
+          # 2. 브랜치 이름 결정 (번호 증가 로직 수정)
           CREATED="false"
           REPO="${{ github.repository }}"
 
           # 기존 로직처럼 000-020 중 없는 번호 선택
           for i in $(seq -w 0 20); do
-            # 기존에는 ISSUE_NUMBER가 없었지만, gh issue develop을 쓰려면 브랜치 이름에 이슈 번호가 있는 것이 권장됨
-            # 기존 auto-branch-on-issue.yml 처럼 issue/NUM-SLUG 패턴을 따르거나, 
-            # 아니면 기존처럼 ${i}-${SLUG}-issue 로 가도 무방하나, 연결은 gh가 담당
-            BRANCH_NAME="${i}-${SLUG}-issue" 
+            BRANCH_NAME="${i}-${SLUG}-issue"
             
-            # gh issue develop을 사용하면 브랜치 존재 유무를 git ls-remote 대신 gh로 확인
-            if gh issue develop --list --repo "$REPO" "$ISSUE_NUMBER" | grep -q "$BRANCH_NAME"; then
-              echo "Branch $BRANCH_NAME already linked or exists. Skipping index."
-              continue
+            # 💡 수정된 부분: 저장소 전체에 브랜치가 존재하는지 확인
+            # git ls-remote --heads origin "브랜치명"으로 원격 저장소에 존재하는지 확인합니다.
+            if git ls-remote --heads origin "$BRANCH_NAME" | grep "$BRANCH_NAME" > /dev/null; then
+              echo "Branch $BRANCH_NAME already exists in the repository. Skipping index."
+              continue # 브랜치가 존재하면 다음 번호(i+1)로 넘어감
             fi
 
             # 브랜치 생성 및 이슈 연결 (GH CLI 사용)
-            # gh issue develop은 자동으로 브랜치가 없으면 BASE_BRANCH를 기준으로 생성하고 연결까지 해줍니다.
+            # 브랜치가 존재하지 않으므로 gh issue develop 명령어로 생성하고 연결합니다.
             echo "Creating & linking branch: $BRANCH_NAME"
             gh issue develop "$ISSUE_NUMBER" \
               --repo "$REPO" \
@@ -84,7 +78,8 @@ jobs:
             CREATED="true"
             echo "Linked branches now:"
             gh issue develop --list --repo "$REPO" "$ISSUE_NUMBER"
-            break
+            break # 브랜치 생성에 성공했으므로 반복문을 종료
+
           done
 
           if [ "$CREATED" != "true" ]; then
