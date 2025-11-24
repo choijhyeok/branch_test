@@ -7,23 +7,19 @@ body:
   - type: textarea
     id: details
     attributes:
-      label: 상세 요구사항 및 개발 내용
+      label: 📝 상세 요구사항 및 개발 내용
       description: 왜 이 작업이 필요한지, 배경과 목적을 적어주세요.
       placeholder: |
-        - 개발 내용
-          - [ ] ~~~ 개발완료
-          - [ ] !!!! 테스트 완료
-          - [ ] 항목 3
+        - 이번에 작업한 내용을 간략히 설명해주세요.
     validations:
       required: true
 
   - type: textarea
     id: etc
     attributes:
-      label: 기타 참고 사항
-      description: 관련 문서, 화면 설계, API 명세, notion 등의 링크가 있다면 적어주세요.
+      label: 💬 기타 참고 사항
+      description: 관련 문서, API 명세, notion 등의 링크가 있다면 적어주세요.
       placeholder: |
-        - Figma:
         - Notion:
         - API Spec:
     validations:
